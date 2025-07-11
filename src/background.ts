@@ -2,14 +2,16 @@ import type { Message } from "./type";
 
 chrome.runtime.onMessage.addListener(
   (message: Message, sender, sendResponse) => {
+    console.log("Receive message in background = ", message);
     if (message.action === "listTags") {
       chrome.tabs.query({}, function (tabs) {
         console.log("Receive tabs in background = ", tabs);
-        sendResponse(tabs);
+        sendResponse({ tabs });
       });
       return true;
     }
     if (message.action === "getMarkdown") {
+      console.log("Receive getMarkdown in background");
       chrome.tabs.sendMessage(
         message.tabId!,
         { action: "getBodyMarkdown" },
