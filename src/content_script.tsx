@@ -1,55 +1,64 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import type { Message } from "./type";
 import { createRoot } from "react-dom/client";
 import TurndownService from "turndown";
 const turndownService = new TurndownService();
 
+declare global {
+  interface Window {
+    openTabs?: () => void;
+    stopRenderTabs?: () => void;
+  }
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function main() {
+async function InitContentScript() {
   console.log("Content script loaded!");
-  initMessageListener();
+  //1. add tab listener
+  initTabListener();
+
+  //2. check if gpt
   const url = window.location.href;
   if (!url.includes("chatgpt.com")) {
     return;
   }
+  //3. find textarea
+  const textarea = await findTextArea();
+  if (!textarea) {
+    return;
+  }
+
+  //4. init gpt prompt text area
+  addGptTextAreaListener(textarea);
+
+  //5. mount react
+  mountReact();
+}
+
+async function findTextArea() {
   let gptPromptTextArea: HTMLElement | null = null;
 
   const MAX_RETRY = 10;
   let retryCount = 0;
 
   while (!gptPromptTextArea && retryCount < MAX_RETRY) {
-    console.log("Retry count = ", retryCount);
     retryCount++;
+    gptPromptTextArea = document.getElementById("prompt-textarea");
     await sleep(200);
-    gptPromptTextArea = getChatGptPromptTextArea();
-    if (gptPromptTextArea) {
-      console.log("Find gpt prompt textarea");
-      initGptPromptTextArea(gptPromptTextArea);
-    }
   }
+
+  return gptPromptTextArea;
 }
 
-function initGptPromptTextArea(gptPromptTextArea: HTMLElement) {
-  const textAreaParent = gptPromptTextArea.parentElement!;
-  textAreaParent.style.position = "relative";
+function addGptTextAreaListener(gptPromptTextArea: HTMLElement) {
   gptPromptTextArea.addEventListener("keydown", (event) => {
-    if (event?.key === "@") {
-      console.log("Receive @ key");
-      chrome.runtime.sendMessage(
-        { action: "listTags" } as Message,
-        function (response: { tabs: chrome.tabs.Tab[] }) {
-          renderTabs(response.tabs, textAreaParent);
-        }
-      );
+    if (event.key === "@") {
+      window.openTabs?.();
     }
   });
-}
-
-function getChatGptPromptTextArea() {
-  return document.getElementById("prompt-textarea");
 }
 
 function getCleanBody() {
@@ -62,14 +71,14 @@ function getCleanBody() {
   return bodyClone.innerHTML;
 }
 
-function initMessageListener() {
+function initTabListener() {
   console.log("Init message listener");
   chrome.runtime.onMessage.addListener(
     (message: Message, sender, sendResponse) => {
       console.log("Receive message in content script = ", message);
-      if (message.action === "getBodyMarkdown") {
+      if (message.action === "produceMarkdown") {
         const cleanBody = getCleanBody();
-        console.log("Receive getBodyMarkdown in content script");
+        console.log(" produceMarkdown in content script");
         const markdown = turndownService.turndown(cleanBody);
         sendResponse({ markdown });
         return true;
@@ -78,72 +87,67 @@ function initMessageListener() {
   );
 }
 
-let reactMount: HTMLElement | null = null;
-let reactRoot: ReturnType<typeof createRoot> | null = null;
-let clickHandler: ((e: MouseEvent) => void) | null = null;
-
-function renderTabs(tabs: chrome.tabs.Tab[], container: HTMLElement) {
-  if (!reactMount) {
-    reactMount = document.createElement("div");
-    reactMount.id = "tab-mention-react-root";
-    document.body.appendChild(reactMount);
-    reactRoot = createRoot(reactMount);
+function mountReact() {
+  const thread_bottom = document.getElementById("thread-bottom");
+  const container = thread_bottom?.children[0]?.children[0] as
+    | HTMLElement
+    | undefined;
+  if (!container) {
+    return;
   }
-  if (clickHandler) {
-    document.removeEventListener("click", clickHandler, true);
-  }
-  const stopRenderTabs = () => {
-    reactRoot?.unmount();
-    reactMount?.remove();
-    reactRoot = null;
-    reactMount = null;
-  };
-  clickHandler = (e: MouseEvent) => {
-    if (
-      reactMount &&
-      e.target instanceof Node &&
-      !reactMount.contains(e.target)
-    ) {
-      stopRenderTabs();
-      document.removeEventListener("click", clickHandler!, true);
-      clickHandler = null;
-    }
-  };
-  document.addEventListener("click", clickHandler, true);
+  const reactMount = document.createElement("div");
+  reactMount.id = "tab-mention-react-root";
+  container.appendChild(reactMount);
+  console.log("container = ", container);
+  const reactRoot = createRoot(reactMount);
 
-  const containerRect = container.getBoundingClientRect();
-  const bottomToInputTop = window.innerHeight - containerRect.top + 8;
-  const tagsLeft = containerRect.left;
-  reactRoot!.render(
-    <div
-      style={{
-        position: "fixed",
-        bottom: `${bottomToInputTop}px`,
-        left: `${tagsLeft}px`,
-        zIndex: 10000,
-      }}
-    >
-      <TagsUI tabs={tabs} stopRenderTabs={stopRenderTabs} />
-    </div>
-  );
+  reactMount.style.position = "absolute";
+  reactMount.style.bottom = `${container.offsetHeight + 20}px`;
+  reactMount.style.left = `220px`;
+  reactMount.style.zIndex = "10000";
+  reactRoot.render(<TagsUI />);
 }
 
-function TagsUI({
-  tabs,
-  stopRenderTabs,
-}: {
-  tabs: chrome.tabs.Tab[];
-  stopRenderTabs: () => void;
-}) {
+function TagsUI() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [tabs, setTabs] = useState<chrome.tabs.Tab[]>([]);
+  console.log("tabs = ", tabs);
+  console.log("isOpen = ", isOpen);
+
+  const stopRenderTabs = () => {
+    setIsOpen(false);
+  };
+  useEffect(() => {
+    window.openTabs = () => {
+      chrome.runtime.sendMessage(
+        { action: "listTags" } as Message,
+        function (response: { tabs: chrome.tabs.Tab[] }) {
+          setTabs(response.tabs);
+          setIsOpen(true);
+        }
+      );
+    };
+    window.stopRenderTabs = stopRenderTabs;
+
+    document.addEventListener("click", stopRenderTabs);
+    return () => {
+      window.openTabs = undefined;
+      window.stopRenderTabs = undefined;
+      document.removeEventListener("click", stopRenderTabs);
+    };
+  }, []);
+  if (!isOpen) {
+    return null;
+  }
   return (
-    <div>
+    <>
       <h1>Tags</h1>
       <ul>
         {tabs.map((tab) => (
           <TagItem tab={tab} key={tab.id} stopRenderTabs={stopRenderTabs} />
         ))}
       </ul>
-    </div>
+    </>
   );
 }
 
@@ -154,13 +158,15 @@ function TagItem({
   tab: chrome.tabs.Tab;
   stopRenderTabs: () => void;
 }) {
-  const handleClick = () => {
+  console.log("render tag item");
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
     console.log("Receive tag click");
     chrome.runtime.sendMessage(
-      { action: "getMarkdown", tabId: tab.id } as Message,
+      { action: "getTabMarkdown", tabId: tab.id } as Message,
       function (response: { markdown: string }) {
         console.log("Receive markdown = ", response.markdown);
-        stopRenderTabs();
+        // stopRenderTabs();
       }
     );
   };
@@ -171,4 +177,4 @@ function TagItem({
   );
 }
 
-main();
+InitContentScript();

@@ -10,11 +10,11 @@ chrome.runtime.onMessage.addListener(
       });
       return true;
     }
-    if (message.action === "getMarkdown") {
-      console.log("Receive getMarkdown in background");
+    if (message.action === "getTabMarkdown") {
+      console.log("Receive getTabMarkdown in background");
       chrome.tabs.sendMessage(
         message.tabId!,
-        { action: "getBodyMarkdown" },
+        { action: "produceMarkdown" },
         function (response: { markdown: string }) {
           console.log(
             "Receive markdownBody in background = ",
