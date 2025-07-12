@@ -95,14 +95,23 @@ function mountReact() {
   if (!container) {
     return;
   }
+  container.style.position = "relative";
   const reactMount = document.createElement("div");
   reactMount.id = "tab-mention-react-root";
   container.appendChild(reactMount);
   console.log("container = ", container);
   const reactRoot = createRoot(reactMount);
 
+  //check textarea if in center
+  const rect = container.getBoundingClientRect();
+  const distanceToBottom = window.innerHeight - rect.bottom;
+  if (distanceToBottom < 200) {
+    reactMount.style.bottom = `${container.offsetHeight + 20}px`;
+  } else {
+    reactMount.style.top = `${container.offsetHeight + 20}px`;
+  }
+
   reactMount.style.position = "absolute";
-  reactMount.style.bottom = `${container.offsetHeight + 20}px`;
   reactMount.style.left = `220px`;
   reactMount.style.zIndex = "10000";
   reactRoot.render(<TagsUI />);
@@ -111,8 +120,6 @@ function mountReact() {
 function TagsUI() {
   const [isOpen, setIsOpen] = useState(false);
   const [tabs, setTabs] = useState<chrome.tabs.Tab[]>([]);
-  console.log("tabs = ", tabs);
-  console.log("isOpen = ", isOpen);
 
   const stopRenderTabs = () => {
     setIsOpen(false);
@@ -166,7 +173,7 @@ function TagItem({
       { action: "getTabMarkdown", tabId: tab.id } as Message,
       function (response: { markdown: string }) {
         console.log("Receive markdown = ", response.markdown);
-        // stopRenderTabs();
+        stopRenderTabs();
       }
     );
   };
