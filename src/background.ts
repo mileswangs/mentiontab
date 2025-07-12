@@ -5,8 +5,10 @@ chrome.runtime.onMessage.addListener(
     console.log("Receive message in background = ", message);
     if (message.action === "listTags") {
       chrome.tabs.query({}, function (tabs) {
-        console.log("Receive tabs in background = ", tabs);
-        sendResponse({ tabs });
+        const tabWithoutCurrent = tabs.filter(
+          (tab) => tab.id !== sender.tab?.id
+        );
+        sendResponse({ tabs: tabWithoutCurrent });
       });
       return true;
     }
@@ -15,12 +17,8 @@ chrome.runtime.onMessage.addListener(
       chrome.tabs.sendMessage(
         message.tabId!,
         { action: "produceMarkdown" },
-        function (response: { markdown: string }) {
-          console.log(
-            "Receive markdownBody in background = ",
-            response.markdown
-          );
-          sendResponse({ markdown: response.markdown });
+        function (response: { markdown: string } | undefined) {
+          sendResponse({ markdown: response?.markdown || "" });
         }
       );
       return true; // 异步
