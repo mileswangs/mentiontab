@@ -190,10 +190,10 @@ function TagItem({
     <li
       key={tab.id}
       onClick={handleClick}
-      className="p-1 flex gap-1 cursor-pointer hover:bg-gray-100 rounded-lg"
+      className="p-1 flex gap-1 items-center cursor-pointer hover:bg-gray-100 rounded-lg"
     >
       <img src={tab.favIconUrl} alt="" className="w-4 h-4" />
-      <p className="overflow-hidden text-ellipsis whitespace-nowrap">
+      <p className="max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap">
         {tab.title}
       </p>
     </li>
