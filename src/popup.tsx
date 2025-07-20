@@ -9,7 +9,7 @@ const Popup = () => {
           width: "200px",
         }}
       >
-        <h3>mentiontab is enable ✅</h3>
+        <h3>mentiontab is enabled ✅</h3>
         <p>click @ to mention tab</p>
       </div>
     </>

@@ -3,7 +3,7 @@ import type { Message } from "./type";
 import { createRoot } from "react-dom/client";
 import TurndownService from "turndown";
 const turndownService = new TurndownService();
-
+import posthog from "posthog-js/dist/module.full.no-external";
 let needFixReactPosition = false;
 
 declare global {
@@ -23,10 +23,37 @@ async function InitContentScript() {
     return;
   }
 
+  posthog.init("phc_OjdegPpqWmwjdBdF649ZGbPuq05x9j1gFJuasJYaUyS", {
+    api_host: "https://us.i.posthog.com",
+    persistence: "localStorage",
+    disable_external_dependency_loading: true,
+    autocapture: false,
+    disable_session_recording: false,
+    capture_pageview: false,
+    loaded: (posthog) => {
+      posthog.register({
+        full_url: window.location.href,
+        domain: window.location.hostname,
+      });
+    },
+  });
+
   //await make sure mountReact is executed after textarea is found
   await addListenerInFirstTextArea();
 
   mountReact();
+}
+
+function textareaKeydown(event: KeyboardEvent) {
+  if (event.key === "@") {
+    posthog.capture("enter_mention", {});
+    if (needFixReactPosition) {
+      fixReactPosition();
+    }
+    window.openTabs?.();
+  } else {
+    window.stopRenderTabs?.();
+  }
 }
 
 async function addListenerInFirstTextArea() {
@@ -36,16 +63,7 @@ async function addListenerInFirstTextArea() {
   while (!textarea && count > 0) {
     textarea = document.getElementById("prompt-textarea");
     if (textarea) {
-      textarea.addEventListener("keydown", (event) => {
-        if (event.key === "@") {
-          if (needFixReactPosition) {
-            fixReactPosition();
-          }
-          window.openTabs?.();
-        } else {
-          window.stopRenderTabs?.();
-        }
-      });
+      textarea.addEventListener("keydown", textareaKeydown);
       break;
     }
     await sleep(100);
@@ -198,6 +216,9 @@ function TagItem({
   stopRenderTabs: () => void;
 }) {
   const handleClick = (e: React.MouseEvent) => {
+    posthog.capture("click_tab", {
+      url: tab.url || "",
+    });
     e.stopPropagation();
     chrome.runtime.sendMessage(
       { action: "getTabMarkdown", tabId: tab.id } as Message,
@@ -223,26 +244,17 @@ function TagItem({
 
 // keep prompt textarea listener when rerender
 let lastTextarea: HTMLElement | null = null;
-let lastListener: ((event: KeyboardEvent) => void) | null = null;
 
 function bindKeyListenerToCurrentTextArea() {
   const textarea = document.getElementById("prompt-textarea");
   if (textarea && textarea !== lastTextarea) {
     // unbind old listener
-    if (lastTextarea && lastListener) {
-      lastTextarea.removeEventListener("keydown", lastListener);
+    if (lastTextarea) {
+      lastTextarea.removeEventListener("keydown", textareaKeydown);
     }
     // bind new listener
-    const listener = (event: KeyboardEvent) => {
-      if (event.key === "@") {
-        window.openTabs?.();
-      } else {
-        window.stopRenderTabs?.();
-      }
-    };
-    textarea.addEventListener("keydown", listener);
+    textarea.addEventListener("keydown", textareaKeydown);
     lastTextarea = textarea;
-    lastListener = listener;
   }
 }
 

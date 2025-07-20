@@ -1,5 +1,4 @@
 import type { Message } from "./type";
-
 chrome.runtime.onMessage.addListener(
   (message: Message, sender, sendResponse) => {
     console.log("Receive message in background = ", message);
