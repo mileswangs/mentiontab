@@ -215,6 +215,7 @@ function TagItem({
   tab: chrome.tabs.Tab;
   stopRenderTabs: () => void;
 }) {
+  const [err, setErr] = useState("");
   const handleClick = (e: React.MouseEvent) => {
     posthog.capture("click_tab", {
       url: tab.url || "",
@@ -222,8 +223,14 @@ function TagItem({
     e.stopPropagation();
     chrome.runtime.sendMessage(
       { action: "getTabMarkdown", tabId: tab.id } as Message,
-      function (response: { markdown: string }) {
-        addTextToGptPromptTextArea(response.markdown);
+      function (response: { markdown?: string; err?: string }) {
+        if (response.err) {
+          setErr(response.err);
+          return;
+        } else {
+          setErr("");
+        }
+        addTextToGptPromptTextArea(response.markdown!);
         stopRenderTabs();
       }
     );
@@ -232,12 +239,24 @@ function TagItem({
     <li
       key={tab.id}
       onClick={handleClick}
-      className="p-1 flex gap-1 items-center cursor-pointer hover:bg-gray-100 rounded-lg"
+      className="relative p-1 flex gap-1 max-w-[300px] items-center cursor-pointer hover:bg-gray-100 rounded-lg"
     >
       <img src={tab.favIconUrl} alt="" className="w-4 h-4" />
-      <p className="max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap">
-        {tab.title}
-      </p>
+      {!err && (
+        <p className="flex-1 relative overflow-hidden text-ellipsis whitespace-nowrap">
+          {tab.title}
+        </p>
+      )}
+      {err && (
+        <div
+          className="flex-1 relative overflow-hidden text-ellipsis whitespace-nowrap font-bold "
+          style={{
+            color: "red",
+          }}
+        >
+          {err}!
+        </div>
+      )}
     </li>
   );
 }
