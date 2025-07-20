@@ -3,8 +3,7 @@
 
   "name": "Mentiontab - Let ChatGPT see your tabs",
   "description": "Lets ChatGPT access exactly what you're seeing. open-source and privacy-first.",
-  "version": "1.1",
-
+  "version": "1.1.0",
   "options_ui": {
     "page": "options.html"
   },
