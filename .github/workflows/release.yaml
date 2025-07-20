@@ -32,12 +32,12 @@ jobs:
       - name: Zip the extension for dev mode
         run: |
           cd dist
-          zip -r ../extension-dev.zip .
+          zip -r ../mentiontab.zip .
           cd ..
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: extension-dev.zip
+          files: mentiontab.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
