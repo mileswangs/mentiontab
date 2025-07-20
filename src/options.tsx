@@ -48,7 +48,7 @@ const Options = () => {
         >
           <option value="red">red</option>
           <option value="green">green</option>
-          <option value="blue">blue</option>
+          <option value="blue ">blue</option>
           <option value="yellow">yellow</option>
         </select>
       </div>

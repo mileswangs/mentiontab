@@ -4,6 +4,8 @@ import { createRoot } from "react-dom/client";
 import TurndownService from "turndown";
 const turndownService = new TurndownService();
 
+let needFixReactPosition = false;
+
 declare global {
   interface Window {
     openTabs?: () => void;
@@ -16,14 +18,12 @@ function sleep(ms: number) {
 }
 
 async function InitContentScript() {
-  console.log("Content script loaded!");
-
   const url = window.location.href;
   if (!url.includes("chatgpt.com")) {
     return;
   }
 
-  //await 保证mountReact在textarea找到之后再执行
+  //await make sure mountReact is executed after textarea is found
   await addListenerInFirstTextArea();
 
   mountReact();
@@ -36,9 +36,11 @@ async function addListenerInFirstTextArea() {
   while (!textarea && count > 0) {
     textarea = document.getElementById("prompt-textarea");
     if (textarea) {
-      console.log("Find textarea", textarea);
       textarea.addEventListener("keydown", (event) => {
         if (event.key === "@") {
+          if (needFixReactPosition) {
+            fixReactPosition();
+          }
           window.openTabs?.();
         } else {
           window.stopRenderTabs?.();
@@ -68,17 +70,19 @@ function getCleanBody() {
       "script, style, link, noscript, template, meta, iframe, svg, canvas, font"
     )
     .forEach((el) => el.remove());
+
+  bodyClone
+    .querySelectorAll("img[src^='data:image']")
+    .forEach((el) => el.remove());
+
   return bodyClone.innerHTML;
 }
 
 function initTabListener() {
-  console.log("Init message listener");
   chrome.runtime.onMessage.addListener(
     (message: Message, sender, sendResponse) => {
-      console.log("Receive message in content script = ", message);
       if (message.action === "produceMarkdown") {
         const cleanBody = getCleanBody();
-        console.log(" produceMarkdown in content script");
         const markdown = turndownService.turndown(cleanBody);
         const markdownSingleNewline = markdown.replace(
           /(\r\n|\n|\r){2,}/g,
@@ -93,21 +97,38 @@ function initTabListener() {
 
 initTabListener();
 
+let container: HTMLElement | undefined = undefined;
+let reactMount: HTMLElement | undefined = undefined;
+
+function fixReactPosition() {
+  if (!container || !reactMount) {
+    return;
+  }
+  const rect = container.getBoundingClientRect();
+  const distanceToBottom = window.innerHeight - rect.bottom;
+
+  if (distanceToBottom < 200) {
+    reactMount.style.top = "";
+    reactMount.style.bottom = `${container.offsetHeight - 5}px`;
+
+    needFixReactPosition = false;
+  }
+}
+
 function mountReact() {
-  //确保mountReact能被重复执行
+  // allow mountReact to be called multiple times
   if (document.getElementById("tab-mention-react-root")) {
     return;
   }
   const thread_bottom = document.getElementById("thread-bottom");
-  const container = thread_bottom?.children[0]?.children[0] as
+  container = thread_bottom?.children[0]?.children[0] as
     | HTMLElement
     | undefined;
   if (!container) {
     return;
   }
-
   container.style.position = "relative";
-  const reactMount = document.createElement("div");
+  reactMount = document.createElement("div");
   reactMount.id = "tab-mention-react-root";
   container.appendChild(reactMount);
   const reactRoot = createRoot(reactMount);
@@ -115,10 +136,12 @@ function mountReact() {
   //check textarea if in center
   const rect = container.getBoundingClientRect();
   const distanceToBottom = window.innerHeight - rect.bottom;
+
   if (distanceToBottom < 200) {
     reactMount.style.bottom = `${container.offsetHeight - 5}px`;
   } else {
-    reactMount.style.top = `${container.offsetHeight + 20}px`;
+    reactMount.style.top = `${container.offsetHeight - 5}px`;
+    needFixReactPosition = true;
   }
 
   reactMount.style.position = "absolute";
@@ -174,10 +197,8 @@ function TagItem({
   tab: chrome.tabs.Tab;
   stopRenderTabs: () => void;
 }) {
-  console.log("tab icon", tab.favIconUrl);
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    console.log("Receive tag click");
     chrome.runtime.sendMessage(
       { action: "getTabMarkdown", tabId: tab.id } as Message,
       function (response: { markdown: string }) {
@@ -207,11 +228,11 @@ let lastListener: ((event: KeyboardEvent) => void) | null = null;
 function bindKeyListenerToCurrentTextArea() {
   const textarea = document.getElementById("prompt-textarea");
   if (textarea && textarea !== lastTextarea) {
-    // 解绑旧的
+    // unbind old listener
     if (lastTextarea && lastListener) {
       lastTextarea.removeEventListener("keydown", lastListener);
     }
-    // 绑定新的
+    // bind new listener
     const listener = (event: KeyboardEvent) => {
       if (event.key === "@") {
         window.openTabs?.();
@@ -240,7 +261,7 @@ function observeTextAreaChanges() {
 
 observeTextAreaChanges();
 
-// reload content script when url change
+// remountreact when url change
 function listenUrlChange(callback: () => void) {
   let lastUrl = location.href;
   setInterval(() => {
